@@ -2,7 +2,7 @@
 
 This is one of the most simple AES implementation in python (also usable on Micropython). 
 
-For now the only supported mode is AES ECB with 128 bit long key, and no padding. 
+For now the only supported mode is AES ECB with 128 bit long keys, and no padding. 
 
 A little background
 -------------------
