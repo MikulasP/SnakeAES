@@ -1,7 +1,4 @@
 '''
-
-TEST VERSION ONLY!
-
 MIT License
 
 Copyright (c) 2022 Mikulas Peter
