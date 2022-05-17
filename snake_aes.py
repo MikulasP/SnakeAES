@@ -1,4 +1,7 @@
 '''
+
+TEST VERSION ONLY!
+
 MIT License
 
 Copyright (c) 2022 Mikulas Peter
@@ -24,10 +27,13 @@ SOFTWARE.
 
 '''
 
-Version 0.2.1
+Version 0.2.2
 Last update: May 08, 2022
 
 '''
+
+from os import stat
+
 
 RCON_TABLE = [0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1B,0x36]
 constMatrix = [
@@ -153,14 +159,16 @@ mul_14 = [
 
 class SnakeAES:
     
-    #All 11 stages of the key
-    CRYPTO_KEX = [[[0x00, 0x00, 0x00, 0x00] for i in range(4)] for j in range(11)]
+    CRYPTO_KEX = [[[0x00, 0x00, 0x00, 0x00] for i in range(4)] for j in range(11)]      #All 11 stages of the key
     
+    BLOCK_SIZE = 16     #Only 16 bytes for now!
+
     #Pass key as string
     def __init__(self, key):
         self.CalculateKeys(key)
         return
     
+    #Calculate all stages of the key ans store it
     def CalculateKeys(self, key):
         rawkey = bytes(key, 'ascii')
         for row in range(len(self.CRYPTO_KEX[0])):
@@ -171,77 +179,48 @@ class SnakeAES:
     
     '''==================================================
     Encrypt block of 16 bytes
-        plaintext:  The text to encrypt in ascii coding. Length must be 16 characters!
+        plaintext:  Byte array with the data to be encrypted. Length must be 16 characters!
     =================================================='''
-    def EncryptBlock(self, plaintext):
-        state = [ [0x00, 0x00, 0x00, 0x00] for i in range(4) ]
+    def EncryptBlock(self, rawBlock):
+        stateBlock = bytearray(rawBlock)
 
-        while len(plaintext) < 16:
-            plaintext += '\0'
-
-        rawstate = bytes(plaintext, 'ascii')
-
-        for row in range(len(state)):
-            for col in range(len(state[0])):
-                state[col][row] = rawstate[(row * 4) + col]
-	
-        self.AddRoundKey(state, 0)
-
+        self.AddRoundKey(stateBlock, 0)
         for rnd in range(1, 10):
-            self.SubstituteBytes(state, sBox)
-            state = self.ShiftRowsLeft(state)
-            state = self.MixColumn(state)
-            self.AddRoundKey(state, rnd)
+            self.SubstituteBytes(stateBlock, sBox)
+            stateBlock = self.ShiftRowsLeft(stateBlock)
+            stateBlock = self.MixColumn(stateBlock)          
+            self.AddRoundKey(stateBlock, rnd)        
+        self.SubstituteBytes(stateBlock, sBox)
+        stateBlock = self.ShiftRowsLeft(stateBlock)
+        self.AddRoundKey(stateBlock, 10)
         
-        self.SubstituteBytes(state, sBox)
-        state = self.ShiftRowsLeft(state)
-        self.AddRoundKey(state, 10)
-
-        returnState = [0x00 for i in range(16)]
-        for row in range(len(state)):
-            for col in range(len(state[1])):
-                returnState[row * 4 + col] = state[col][row]
-
-        return returnState
+        return stateBlock
 
     '''==================================================
     Decrypt block of 16 bytes
-        cipherBlock: One dimensional byte array with the encrypted data. Length must be 16 characters!
+        cipherBlock: Byte array with the encrypted data. Length must be 16 characters!
     =================================================='''
     def DecryptBlock(self, cipherBlock):
-        state = [ [0x00, 0x00, 0x00, 0x00] for i in range(4) ]
-	
-        for row in range(len(state)):
-            for col in range(len(state[0])):
-                state[col][row] = cipherBlock[(row * 4) + col]
+        stateBlock = bytearray(cipherBlock)
 
-        self.AddRoundKey(state, 10)
-
+        self.AddRoundKey(stateBlock, 10)
         for rnd in range(9, 0, -1):
-            state = self.ShiftRowsRight(state)
-            self.SubstituteBytes(state, sBoxInv)
-            self.AddRoundKey(state, rnd)
-            state = self.MixColumnInv(state)
+            stateBlock = self.ShiftRowsRight(stateBlock)
+            self.SubstituteBytes(stateBlock, sBoxInv)
+            self.AddRoundKey(stateBlock, rnd)
+            stateBlock = self.MixColumnInv(stateBlock)
+        stateBlock = self.ShiftRowsRight(stateBlock)
+        self.SubstituteBytes(stateBlock, sBoxInv)
+        self.AddRoundKey(stateBlock, 0)
 
-        state = self.ShiftRowsRight(state)
-        self.SubstituteBytes(state, sBoxInv)
-        self.AddRoundKey(state, 0)
-
-        returnState = [0x00 for i in range(16)]
-        for row in range(len(state)):
-            for col in range(len(state[1])):
-                returnState[row * 4 + col] = state[col][row]
-
-        return returnState
+        return stateBlock
 
     '''==================================================
     Substitute bytes from selected sBox
     =================================================='''
-    def SubstituteBytes(self, state, boxToUse):
-        for row in range(len(state)):
-            for col in range(len(state[0])):
-                state[row][col] = boxToUse[state[row][col] >> 4][state[row][col] & 0x0F]
-        #return state
+    def SubstituteBytes(self, stateBlock, boxToUse):
+        for i in range(len(stateBlock)):
+            stateBlock[i] = boxToUse[stateBlock[i] >> 4][stateBlock[i] & 0x0F]
 
     '''==================================================
     Substitute one byte from selected sBox
@@ -252,24 +231,49 @@ class SnakeAES:
     '''==================================================
     Shift rows left
     =================================================='''
-    def ShiftRowsLeft(self, state):
-        newState = [ [0x00, 0x00, 0x00, 0x00] for i in range(4) ]
-        newState[0][0], newState[0][1], newState[0][2], newState[0][3] = state[0][0], state[0][1], state[0][2], state[0][3]
-        newState[1][0], newState[1][1], newState[1][2], newState[1][3] = state[1][1], state[1][2], state[1][3], state[1][0]
-        newState[2][0], newState[2][1], newState[2][2], newState[2][3] = state[2][2], state[2][3], state[2][0], state[2][1]
-        newState[3][0], newState[3][1], newState[3][2], newState[3][3] = state[3][3], state[3][0], state[3][1], state[3][2]
-        return newState
+    def ShiftRowsLeft(self, stateBlock):
+        newStateBlock = [0x00] * self.BLOCK_SIZE
+        newStateBlock[0] = stateBlock[0]
+        newStateBlock[1] = stateBlock[5]
+        newStateBlock[2] = stateBlock[10]
+        newStateBlock[3] = stateBlock[15]
+        newStateBlock[4] = stateBlock[4]
+        newStateBlock[5] = stateBlock[9]
+        newStateBlock[6] = stateBlock[14]
+        newStateBlock[7] = stateBlock[3]
+        newStateBlock[8] = stateBlock[8]
+        newStateBlock[9] = stateBlock[13]
+        newStateBlock[10] = stateBlock[2]
+        newStateBlock[11] = stateBlock[7]
+        newStateBlock[12] = stateBlock[12]
+        newStateBlock[13] = stateBlock[1]
+        newStateBlock[14] = stateBlock[6]
+        newStateBlock[15] = stateBlock[11]
+        return newStateBlock
+
 
     '''==================================================
     Shift rows right
     =================================================='''
-    def ShiftRowsRight(self, state):
-        newState = [ [0x00, 0x00, 0x00, 0x00] for i in range(4) ]
-        newState[0][0], newState[0][1], newState[0][2], newState[0][3] = state[0][0], state[0][1], state[0][2], state[0][3]
-        newState[1][0], newState[1][1], newState[1][2], newState[1][3] = state[1][3], state[1][0], state[1][1], state[1][2]
-        newState[2][0], newState[2][1], newState[2][2], newState[2][3] = state[2][2], state[2][3], state[2][0], state[2][1]
-        newState[3][0], newState[3][1], newState[3][2], newState[3][3] = state[3][1], state[3][2], state[3][3], state[3][0]
-        return newState
+    def ShiftRowsRight(self, stateBlock):
+        newStateBlock = [0x00] * self.BLOCK_SIZE
+        newStateBlock[0] = stateBlock[0]
+        newStateBlock[1] = stateBlock[13]
+        newStateBlock[2] = stateBlock[10]
+        newStateBlock[3] = stateBlock[7]
+        newStateBlock[4] = stateBlock[4]
+        newStateBlock[5] = stateBlock[1]
+        newStateBlock[6] = stateBlock[14]
+        newStateBlock[7] = stateBlock[11]
+        newStateBlock[8] = stateBlock[8]
+        newStateBlock[9] = stateBlock[5]
+        newStateBlock[10] = stateBlock[2]
+        newStateBlock[11] = stateBlock[15]
+        newStateBlock[12] = stateBlock[12]
+        newStateBlock[13] = stateBlock[9]
+        newStateBlock[14] = stateBlock[6]
+        newStateBlock[15] = stateBlock[3]
+        return  newStateBlock
 
     '''==================================================
     Multiply together 2 elements from 2 matrix
@@ -301,33 +305,30 @@ class SnakeAES:
     '''==================================================
     Mix Columns
     =================================================='''
-    def MixColumn(self, state):
-        newState = [[0x00, 0x00, 0x00, 0x00] for i in range(4)]
-        for column in range(len(state[0])):
-            for row in range(len(state)):
-                newState[row][column] = self.MatrMult(constMatrix[row][0], state[0][column]) ^ self.MatrMult(constMatrix[row][1], state[1][column]) ^ self.MatrMult(constMatrix[row][2], state[2][column]) ^ self.MatrMult(constMatrix[row][3], state[3][column])
-        return newState
+    def MixColumn(self, stateBlock):
+        newStateBlock = [0x00] * self.BLOCK_SIZE
+        for i in range(4):
+            for mult in range(4):
+                newStateBlock[i * 4 + mult] = self.MatrMult(constMatrix[mult][0], stateBlock[i * 4]) ^ self.MatrMult(constMatrix[mult][1], stateBlock[i * 4 + 1]) ^ self.MatrMult(constMatrix[mult][2], stateBlock[i * 4 + 2]) ^ self.MatrMult(constMatrix[mult][3], stateBlock[i * 4 + 3])
+        return newStateBlock
 
     '''==================================================
     Inverse Mix Columns
     =================================================='''
-    def MixColumnInv(self, state):
-        newState = [[0x00, 0x00, 0x00, 0x00] for i in range(4)]
-        for column in range(len(state[0])):
-            for row in range(len(state)):
-                newState[row][column] = self.MatrMultInv(constMatrixInv[row][0], state[0][column]) ^ self.MatrMultInv(constMatrixInv[row][1], state[1][column]) ^ self.MatrMultInv(constMatrixInv[row][2], state[2][column]) ^ self.MatrMultInv(constMatrixInv[row][3], state[3][column])
-        return newState
-
+    def MixColumnInv(self, stateBlock):
+        newStateBlock = [0x00] * self.BLOCK_SIZE
+        for i in range(4):
+            for mult in range(4):
+                newStateBlock[i * 4 + mult] = self.MatrMultInv(constMatrixInv[mult][0], stateBlock[i * 4]) ^ self.MatrMultInv(constMatrixInv[mult][1], stateBlock[i * 4 + 1]) ^ self.MatrMultInv(constMatrixInv[mult][2], stateBlock[i * 4 + 2]) ^ self.MatrMultInv(constMatrixInv[mult][3], stateBlock[i * 4 + 3])
+        return newStateBlock
 
     '''==================================================
     Add round key to state
     =================================================='''
-
     def AddRoundKey(self, state, keyNum):
-        for row in range(len(state)):
-            for col in range(len(state[0])):
-                state[row][col] = state[row][col] ^ self.CRYPTO_KEX[keyNum][row][col]
-        #return state
+        for i in range(4):
+            for mult in range(4):
+                state[mult * 4 + i] = state[mult * 4 + i] ^ self.CRYPTO_KEX[keyNum][i][mult]
 
     '''==================================================
     Expand key
@@ -338,11 +339,9 @@ class SnakeAES:
         newKey[1][0] = self.SubstituteBytesSingle(key[2][3], sBox) ^ key[1][0]
         newKey[2][0] = self.SubstituteBytesSingle(key[3][3], sBox) ^ key[2][0]
         newKey[3][0] = self.SubstituteBytesSingle(key[0][3], sBox) ^ key[3][0]
-
         for rnd in range(1, 4):
             newKey[0][rnd] = newKey[0][rnd - 1] ^ key[0][rnd]
             newKey[1][rnd] = newKey[1][rnd - 1] ^ key[1][rnd]
             newKey[2][rnd] = newKey[2][rnd - 1] ^ key[2][rnd]
             newKey[3][rnd] = newKey[3][rnd - 1] ^ key[3][rnd]
-
         return newKey
