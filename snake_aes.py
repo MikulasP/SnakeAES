@@ -25,7 +25,7 @@ SOFTWARE.
 '''
 
 Version 0.2.2
-Last update: May 08, 2022
+Last update: May 17, 2022
 
 '''
 
