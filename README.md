@@ -1,3 +1,10 @@
+Archive!
+--
+
+Project moved to: https://github.com/MikulasP/crypto
+
+--
+
 # SnakeAES
 
 This is one of the most bare AES implementation in python (also works on Micropython). 
